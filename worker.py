@@ -47,12 +47,15 @@ class Worker(Thread):
     
     # When batch count is reached, save the partial index into the index_directory
     def download_partial_index(self):
-        # print(f"Downloading to partial_index for : {self.directory}")
         directory_name = os.path.basename(self.directory)
         index_path = os.path.join(self.utils.partial_index_directory, f"{directory_name}_{self.disk_write_count}.json")
-        
+        for token in self.inverted_index:
+            self.inverted_index[token].sort(key=lambda x: x["term_frequency"], reverse=True)
+        # Write to JSON file with sorted keys
         with open(index_path, 'w', encoding='utf-8') as file:
-            json.dump(self.inverted_index, file)
+            json.dump(self.inverted_index, file, sort_keys=True)
+        
+        # Clear the index after saving
         self.inverted_index.clear()
 
     def create_partial_indices(self): #creates partial index with both the docID and   

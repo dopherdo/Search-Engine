@@ -29,7 +29,8 @@ def main():
     indexer = PartialIndexer(file_path, index_directory)
     indexer.create_workers()
 
-    #merge_partial_indices() # pass in the index directory
+    merge_partial_indices() # pass in the index directory
+    
     
 if __name__ == "__main__":
     main()
