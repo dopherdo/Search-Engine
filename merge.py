@@ -1,24 +1,5 @@
-import os
-import json
-from collections import defaultdict, Counter
-from pathlib import Path
-import heapq  # For priority queue to efficiently merge the sorted tokens
 
-
-
-
-
-def create_workers(self):
-    '''
-    Create a worker for each subdir and run create_partial_indices() on it
-    '''
-    # TODO: Path() does not work bc of something Sasson said
-    for subs in Path(self.directory).iterdir(): # Iterates through each subdir in DEV folder
-        # Create a worker/thread
-        # worker.create_partial_indices()
-        pass
-
-# Old implementation -- replaced by Michael's ChatGPT thing
+# {{Old implementation -- replaced by Michael's ChatGPT thing
 """def merge_partial_indices(self, output_file="final_inverted_index.json"): 
     '''
     Merges all partial indices into a final json file (disk)
@@ -45,6 +26,9 @@ def create_workers(self):
         json.dump(final_index, file)"""
 
 
+def create_final_index_file():
+    pass
+
 def merge_partial_indices(self, output_file="final_inverted_index.json"):
     final_index = defaultdict(list)
 
@@ -64,14 +48,3 @@ def merge_partial_indices(self, output_file="final_inverted_index.json"):
     - take the first of every partial_indices item and merge toegther and then place in the final json file 
     - merge sort using multi way sort 
     '''
-
-
-
-    
-if __name__ == "__main__":
-    dev_path = Path("PracticeDev")
-    index = InvertedIndex(dev_path)
-    index.run_indexer()
-    
-    
-    

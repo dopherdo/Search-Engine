@@ -1,22 +1,35 @@
-from collections import defaultdict
+from collections import defaultdict, Counter
 from threading import Thread
 from bs4 import BeautifulSoup # type: ignore
-
+import json
+import os
 
 class Worker(Thread):
-    def __init__(self, dev_path, docID):
-         self.directory = dev_path
-         self.inverted_index = defaultdict(list) #stores inverted index
-         self.batch_count = 5   # Set to 100 to 
-         self.partial_index_count = 0
+    def __init__(self, dev_path, utils):
+        super().__init__(daemon=True)
+        self.directory = dev_path
+        self.inverted_index = defaultdict(list) #stores inverted index
+        self.batch_count = 100   # Set to 100 to 
+        self.utils = utils
+        self.disk_write_count = 0
+        self.current_url = ""
+
 
     # open the files in a folder and get the text
     def process_html_file(self, filepath):
         with open(filepath, 'r', encoding='utf-8') as file:
-            soup = BeautifulSoup(file, 'html.parser')
-            text = soup.get_text()
-            tokens = self.tokenize(text) 
-            return tokens
+            json_data = json.loads(file.read())
+        
+        self.current_url = json_data['url']
+        # Get the HTML content from the JSON
+        html_content = json_data['content']
+        
+        # Parse the HTML content
+        soup = BeautifulSoup(html_content, 'html.parser')
+        text = soup.get_text()
+        tokens = self.tokenize(text)
+    
+        return tokens
 
     def tokenize(self, text):
         tokens = []
@@ -26,32 +39,37 @@ class Worker(Thread):
                 letter = char
                 current_token += letter
             else: 
-                if len(current_token) > 0:
+                if len(current_token) > 1:
                     token_lower = current_token.lower()  # Convert the token to lowercase
                     tokens.append(token_lower)
                     current_token = ''
         return tokens
     
-    # saves the partial index
+    # When batch count is reached, save the partial index into the index_directory
     def download_partial_index(self):
-        index_path = f"partial_index_{self.partial_index_count}.json"
+        # print(f"Downloading to partial_index for : {self.directory}")
+        directory_name = os.path.basename(self.directory)
+        index_path = os.path.join(self.utils.partial_index_directory, f"{directory_name}_{self.disk_write_count}.json")
+        
         with open(index_path, 'w', encoding='utf-8') as file:
             json.dump(self.inverted_index, file)
-        self.partial_index_count += 1
         self.inverted_index.clear()
 
-    def create_partial_indexes(self, sub_directory): #creates partial index with both the docID and   
+    def create_partial_indices(self): #creates partial index with both the docID and   
         '''
         Each Worker Thread will run this on a folder ex. aiclub_ics_uci
-        - It will 
         '''
+        sub_directory = self.directory
         file_count = 0  # files that we went through 
-        if sub_directory.is_dir(): #check if the sub directory exists                
+        if sub_directory.is_dir(): #check if the sub directory exists           
             for json_file in sub_directory.glob('*.json'):
                 file_count += 1
                 # lock it to access teh docID 
-                docId += 1
                 tokens = self.process_html_file(json_file)
+                
+                # print(f"file_count: {file_count} : {json_file}")
+                doc_ID = self.utils.increment_docID(self.current_url)
+                
                 token_counts = Counter(tokens) 
 
                 
@@ -60,6 +78,13 @@ class Worker(Thread):
                     self.inverted_index[token].append({"doc_id": doc_ID, "term_frequency": word_freq}) 
                         
                 if file_count >= self.batch_count:
+                    self.disk_write_count += 1
                     self.download_partial_index()
                     file_count = 0
-                        
+            
+            if file_count > 0:
+                self.disk_write_count += 1
+                self.download_partial_index()
+    
+    def run(self):
+        self.create_partial_indices()
