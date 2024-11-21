@@ -3,6 +3,7 @@ from pathlib import Path
 from merge import merge_partial_indices
 import os
 import shutil
+from boolean_retrieval import create_prefix_position_index
 
 def create_partial_index_folder(folder_name):
     # Check if the folder exists
@@ -30,6 +31,8 @@ def main():
     indexer.create_workers()
 
     merge_partial_indices() # pass in the index directory
+
+    create_prefix_position_index('final_inverted_index.json', 'prefix_positions.json')
     
     
 if __name__ == "__main__":

@@ -33,7 +33,7 @@ class PartialIndexer:
         self.save_url_map(self.utils.url_map)
         print(f"Finished Partial Indexing")
 
-    def save_url_map(self, url_map):
+    def save_url_map(self, url_map): #creates url_map.json
         """
         Save the URL map to a JSON file.
         """
@@ -44,6 +44,7 @@ class PartialIndexer:
             print(f"URL map saved to {json_file}")
         except Exception as e:
             print(f"Error saving URL map: {e}")
-    
+
+
     
     

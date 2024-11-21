@@ -8,10 +8,10 @@ class Utils:
         self.url_map = {}
 
     
-    def increment_docID(self, url):
+    def increment_docID(self, url, token_count):
         with self.lock:  # Acquire the lock before modifying the shared resource
             self.docId += 1
-            self.url_map[self.docId] = url
+            self.url_map[self.docId] = (url, token_count)
             return self.docId
     
     

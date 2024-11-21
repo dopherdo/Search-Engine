@@ -1,32 +1,41 @@
+from search_engine import SearchEngine
+import time
 
 
-from searchEngine import SearchEngine
-
-def main():
+def run_query(query):
+    start_time = time.time()
     index_path = "final_inverted_index.json"  # Path to the inverted index
-    search_engine = SearchEngine(index_path)
+    token_positions_path = "prefix_positions.json"
+    search_engine = SearchEngine(index_path, token_positions_path)
 
-    queries = [
-        ["cristina", "lopes"],
-        ["machine", "learning"],
-        ["acm"],
-        ["master", "of", "software", "engineering"]
-    ]
+    query = query.split()
+    
+        
+    print(f"\nQuery {' '.join(query)}")
 
-    for i, query in enumerate(queries, 1):
-        print(f"\nQuery {i}: {' '.join(query)}")
-        doc_ids = search_engine.boolean_and_query(query)
-        if not doc_ids:
-            print("No results found.")
-            continue
+    print(query)
 
-        ranked_results = search_engine.rank_results(query, doc_ids)
-        top_5_docs = [doc_id for doc_id, score in ranked_results[:5]]
-        urls = search_engine.fetch_urls(top_5_docs)
+    doc_ids = search_engine.boolean_and_query(query)
+    if not doc_ids:
+        print("No results found.")
+        return []
 
-        print("Top 5 URLs:")
-        for url in urls:
-            print(url)
+    ranked_results = search_engine.rank_results(query, doc_ids)
+    top_5_docs = [doc_id for doc_id, score in ranked_results[:5]]
+    urls = search_engine.fetch_urls(top_5_docs)
 
-if __name__ == "__main__":
-    main()
+
+    print("Top 5 URLs:")
+    for url in urls:
+        print(url)
+    
+    # End timing
+    end_time = time.time()
+    
+    # Calculate elapsed time
+    elapsed_time = end_time - start_time
+    print(f"Query execution time: {elapsed_time:.4f} seconds")
+    
+    print(urls)
+
+    return urls, elapsed_time

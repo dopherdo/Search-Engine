@@ -71,7 +71,7 @@ class Worker(Thread):
                 tokens = self.process_html_file(json_file)
                 
                 # print(f"file_count: {file_count} : {json_file}")
-                doc_ID = self.utils.increment_docID(self.current_url)
+                doc_ID = self.utils.increment_docID(self.current_url, len(tokens))
                 
                 token_counts = Counter(tokens) 
 

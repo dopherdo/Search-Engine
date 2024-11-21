@@ -2,12 +2,19 @@ import heapq
 import json
 from pathlib import Path
 import os
+import math
 
-def merge_partial_indices(output_file="final_inverted_index.json"):
+
+def merge_partial_indices(output_file="final_inverted_index.json", url_map_file = "url_map.json"):
     lowest_names = []     # json_name : word
     indexed_documents = set() # track unique document ids
-    token_counter = 0 #count unique tokens 
+    token_counter = 0 # count unique tokens 
+    
 
+    with open(url_map_file, 'r', encoding='utf-8') as f:
+        url_map = json.load(f)
+        
+    url_count = len(url_map)
     for json_file in Path("partial_index_folder").iterdir():
         with open(json_file, 'r') as file:
             data = json.load(file)
@@ -33,6 +40,7 @@ def merge_partial_indices(output_file="final_inverted_index.json"):
         while lowest_names:     # while there are still terms in any of our partial_index jsons
             try:
                 term, json_file, json_iterator, posting = heapq.heappop(lowest_names)
+
             except TypeError as e:
                 print(f"Error during heap operation: {e}")
                 #print(f"Contents causing error: {lowest_names}")
@@ -41,7 +49,6 @@ def merge_partial_indices(output_file="final_inverted_index.json"):
             # Found duplicate MIN word, need to combine both
             if term == current_term: # when the the current term is the same as the term we have saved  
                 current_posting.extend(posting)
-                current_posting.sort(key=lambda x: x["term_frequency"], reverse=True)
 
                 try:
                     # already found the equal term, so we would go to the next term in the lowerst_names
@@ -58,7 +65,21 @@ def merge_partial_indices(output_file="final_inverted_index.json"):
             else: # when we couldn't find a match for the term we are looking at rn :(
                 #heapq.heappush(lowest_names, (term, json_file, json_iterator, posting)) # pushes the term and posting back into the heap
                 
+                # counting tfidf 
+                
+                # total # of docs  -> len(utils.url_map)
+                # total num of docs with that specific word -> len(current_posting)
+                # term frequency of that specific doc -> current[posting]
+                for i, post in enumerate(current_posting):
+                    tf = 1 + math.log(post["term_frequency"])
+                    idf = math.log(url_count / len(current_posting))
+                    tf_idf = tf * idf
+                    current_posting[i]["tf_idf"] = tf_idf
+
+                current_posting.sort(key=lambda x: x["tf_idf"], reverse=True)
+
                 if current_term:
+                    # Dumps "token" : [{"url1" : "url", "freq1" : freq}         , {url2, freq2}, ...]
                     json.dump({current_term: current_posting}, out_file)
                     out_file.write('\n')
             
@@ -77,18 +98,3 @@ def merge_partial_indices(output_file="final_inverted_index.json"):
                 print("WE FINISHED A FILE WOOOO")
                 pass  # File is fully 
                 
-
-    
-    # min_word = lowest_names[0]# Find the alphabetically first word
-    # json_names_with_min_word = [json_name for json_name, word in url_word_dict.items() if word == min_word]   # Find all URLs that correspond to this word
-    # for each json_name in lowest_names:
-    #     
-if __name__ == "__main__":
-    merge_partial_indices()
-        
-        
-    '''
-    - If there are multiple MIN tokens (meaning they are the same word), then combine the tuples mapped to that token(word)
-        - The mapped tuples should be sorted by docID
-    - iterate  min token(s) and write them to final_inverted_index.json
-    '''
