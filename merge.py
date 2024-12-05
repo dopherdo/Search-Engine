@@ -3,9 +3,51 @@ import json
 from pathlib import Path
 import os
 import math
+from scipy.sparse import csr_matrix
+import numpy as np
+from collections import defaultdict
+
+def calculate_pagerank_sparse(link_graph, damping_factor=0.85, max_iterations=100, tol=1e-6):
+    pages = list(link_graph.keys())
+    N = len(pages)
+    page_to_index = {page: i for i, page in enumerate(pages)}
+
+    # Create a sparse adjacency matrix
+    row_indices = []
+    col_indices = []
+    data = []
+
+    for page, links in link_graph.items():
+        if links:  # Only process pages with outbound links
+            for link in links:
+                if link in page_to_index:  # Ensure the link exists in the graph
+                    row_indices.append(page_to_index[link])
+                    col_indices.append(page_to_index[page])
+                    data.append(1.0 / len(links))  # Out-link normalization
+
+    adjacency_matrix = csr_matrix((data, (row_indices, col_indices)), shape=(N, N))
+
+    # Initialize PageRank scores
+    pagerank = np.ones(N) / N
+    dangling_weights = np.ones(N) / N
+
+    for _ in range(max_iterations):
+        new_pagerank = (1 - damping_factor) / N  # Random teleportation
+        new_pagerank += damping_factor * (adjacency_matrix @ pagerank)  # Rank propagation
+        new_pagerank += damping_factor * sum(pagerank[i] for i in range(N) if i in dangling_weights)
+
+        # Check for convergence
+        if np.linalg.norm(new_pagerank - pagerank, ord=1) < tol:
+            break
+
+        pagerank = new_pagerank
+
+    # Map scores back to page names
+    return {pages[i]: score for i, score in enumerate(pagerank)}
 
 
-def merge_partial_indices(output_file="final_inverted_index.json", url_map_file = "url_map.json"):
+
+def merge_partial_indices(output_file="final_inverted_index.json", url_map_file = "url_map.json", utils):
     lowest_names = []     # json_name : word
     indexed_documents = set() # track unique document ids
     token_counter = 0 # count unique tokens 
@@ -16,7 +58,7 @@ def merge_partial_indices(output_file="final_inverted_index.json", url_map_file 
         
     url_count = len(url_map)
     for json_file in Path("partial_index_folder").iterdir():
-        with open(json_file, 'r') as file:
+        with open(json_file, 'r') as file: 
             data = json.load(file)
             json_file_name = os.path.basename(json_file)  # Get the name of the file without path
             json_iterator = iter(data.items())

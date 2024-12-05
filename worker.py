@@ -7,7 +7,6 @@ import hashlib
 import re
 from datasketch import MinHash
 from nltk.stem import PorterStemmer
-import utils
 
 
 class Worker(Thread):
@@ -26,43 +25,74 @@ class Worker(Thread):
     def process_html_file(self, filepath):
         with open(filepath, 'r', encoding='utf-8') as file:
             json_data = json.loads(file.read())
-        #loop through line by line 
-        # - check if 
+        
         self.current_url = json_data['url']
         # Get the HTML content from the JSON
         html_content = json_data['content']
         
         # Parse the HTML content
         soup = BeautifulSoup(html_content, 'html.parser')
+        
         if self.is_duplicate(soup, self.utils):
             return list()
         
-        # Function to repeat words 3 more times
-        def repeat_words(tags):
-            return ' '.join([word.get_text() * 3 for word in tags])
         
-        # Extract words from bold, headers, and title
-        bold_words = soup.find_all(['b', 'strong'])
-        header_words = soup.find_all(['h1', 'h2', 'h3'])
-        title_words = soup.find('title')
+        # PageRank: Extract outgoing links
+        outgoing_links = set()
+        for a_tag in soup.find_all('a', href=True):
+            href = a_tag['href']
+            href = self.utils.normalize_url(href, self.current_url)
+            outgoing_links.add(href)
         
-        # Repeat the extracted words
-        bold_repeated = repeat_words(bold_words)
-        header_repeated = repeat_words(header_words)
-        title_repeated = title_words.get_text() * 3 if title_words else ''
-        
-        # Get the rest of the text
-        text = soup.get_text()
-        
-        # Combine the repeated words with the normal text
-        final_text = bold_repeated + ' ' + header_repeated + ' ' + title_repeated + ' ' + text
-        
-        # Tokenize the final combined text
-        tokens = self.tokenize(final_text)
+        # Update the link graph in Utils
+        self.utils.update_link_graph(self.current_url, outgoing_links)
     
-        return tokens
     
-    def is_duplicate(self, soup, utils, threshold=0.85, perms=128):
+        # Prepare lists to store words with their multipliers
+        weighted_words = []
+        
+        # Add title words with high multiplier
+        title = soup.find('title')
+        if title:
+            weighted_words.extend([(word, 5) for word in title.get_text().split()])
+        
+        # Add header words with decreasing multipliers
+        headers = soup.find_all(['h1', 'h2', 'h3'])
+        for header in headers:
+            header_multiplier = 4 if header.name == 'h1' else 3 if header.name == 'h2' else 2
+            weighted_words.extend([(word, header_multiplier) for word in header.get_text().split()])
+        
+        # Add bold words with moderate multiplier
+        bold_texts = soup.find_all(['b', 'strong'])
+        for bold in bold_texts:
+            weighted_words.extend([(word, 2) for word in bold.get_text().split()])
+        
+        # Add main body text with multiplier of 1
+        body_words = soup.get_text().split()
+        weighted_words.extend([(word, 1) for word in body_words])
+        
+        # Tokenize with positions and multipliers
+        tokens_with_positions = []
+        current_position = 0
+        
+        for word, multiplier in weighted_words:
+            # Tokenize each word
+            tokenized_word = self.tokenize(word)
+            
+            # If the word tokenizes to something valid
+            if tokenized_word:
+                # Repeat the word based on its multiplier
+                for _ in range(multiplier):
+                    token = tokenized_word[0]
+                    tokens_with_positions.append({
+                        'token': token,
+                        'position': current_position
+                    })
+                    current_position += 1
+        
+        return tokens_with_positions
+    
+    def is_duplicate(self, soup, utils, perms=128):
         content = str(soup)
         # Generate a SHA-256 hash of the content
         content_hash = hashlib.sha256(content.encode()).hexdigest()
@@ -126,37 +156,53 @@ class Worker(Thread):
         # Clear the index after saving
         self.inverted_index.clear()
 
-    def create_partial_indices(self): #creates partial index with both the docID and   
+    def create_partial_indices(self):
         '''
         Each Worker Thread will run this on a folder ex. aiclub_ics_uci
         '''
         sub_directory = self.directory
         file_count = 0  # files that we went through 
+        
         if sub_directory.is_dir(): #check if the sub directory exists           
             for json_file in sub_directory.glob('*.json'):
                 file_count += 1
                 
-                # lock it to access the docID 
-                tokens = self.process_html_file(json_file)
+                # Process the HTML file and get tokens with positions
+                tokens_with_positions = self.process_html_file(json_file)
 
-                if not tokens:
+                if not tokens_with_positions:
                     continue
 
-                # print(f"file_count: {file_count} : {json_file}")
-                doc_ID = self.utils.increment_docID(self.current_url, len(tokens))
+                # Increment the document ID
+                doc_ID = self.utils.increment_docID(self.current_url, len(tokens_with_positions))
                 
-                token_counts = Counter(tokens) 
-
+                # Count total occurrences of each token
+                token_counts = Counter(token_info['token'] for token_info in tokens_with_positions)
                 
-                for token in sorted(token_counts.keys()):
-                    word_freq = token_counts[token]
-                    self.inverted_index[token].append({"doc_id": doc_ID, "term_frequency": word_freq}) 
+                # Group positions for each token
+                token_positions = {}
+                for token_info in tokens_with_positions:
+                    token = token_info['token']
+                    position = token_info['position']
+                    
+                    if token not in token_positions:
+                        token_positions[token] = []
+                    token_positions[token].append(position)
+                
+                # Update the inverted index
+                for token, freq in token_counts.items():
+                    self.inverted_index[token].append({
+                        "doc_id": doc_ID, 
+                        "term_frequency": freq,  # Actual number of times the token appears
+                        "positions": token_positions[token]
+                    }) 
                         
                 if file_count >= self.batch_count:
                     self.disk_write_count += 1
                     self.download_partial_index()
                     file_count = 0
             
+            # Handle any remaining files
             if file_count > 0:
                 self.disk_write_count += 1
                 self.download_partial_index()

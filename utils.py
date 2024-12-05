@@ -1,5 +1,8 @@
 import threading
 from datasketch import MinHashLSH
+from collections import defaultdict
+from scipy.sparse import csr_matrix
+import numpy as np
 
 class Utils:
     def __init__(self, partial_index_directory):
@@ -10,7 +13,41 @@ class Utils:
         self.seen_hashes = set() 
         self.lsh = MinHashLSH(threshold=0.85, num_perm=128)
         self.doc_count = 0
+        self.link_graph = defaultdict(set)      # currently holds the adjacency list
 
+    def build_sparse_matrix(self):
+        """Convert the link graph into a sparse matrix."""
+        url_to_id = {url: idx for idx, url in enumerate(self.link_graph.keys())}
+        num_nodes = len(url_to_id)
+        row_indices = []
+        col_indices = []
+
+        for from_url, to_urls in self.link_graph.items():
+            from_id = url_to_id[from_url]
+            for to_url in to_urls:
+                if to_url in url_to_id:
+                    to_id = url_to_id[to_url]
+                    row_indices.append(to_id)
+                    col_indices.append(from_id)
+
+        data = np.ones(len(row_indices))
+        sparse_matrix = csr_matrix((data, (row_indices, col_indices)), shape=(num_nodes, num_nodes))
+        
+        return sparse_matrix, url_to_id
+    
+    def update_link_graph(self, from_url, to_urls):
+        '''
+        PageRank: Add outgoing links for a URL.
+        '''
+        with self.lock:  
+            self.link_graph[from_url].update(to_urls)
+
+    def normalize_url(self, url, base_url):
+        '''
+        PageRank: Normalize URLs to absolute form if needed.
+        '''
+        with self.lock:  
+            return url  # Add logic to resolve relative URLs using base_url if needed
     
     def increment_docID(self, url, token_count):
         with self.lock:  # Acquire the lock before modifying the shared resource
