@@ -5,6 +5,8 @@ import os
 import shutil
 from boolean_retrieval import create_prefix_position_index
 import utils
+from utils import Utils
+
 
 def create_partial_index_folder(folder_name):
     # Check if the folder exists
@@ -24,11 +26,12 @@ def main():
     '''
     Runs the Indexer
     '''
-    file_path = Path("DEV")
+    file_path = Path("PracticeDev")
     partial_index_path = Path("partial_index_folder")
     index_directory = create_partial_index_folder(partial_index_path)
     # path = Path("DEV")
-    indexer = PartialIndexer(file_path, index_directory)
+    utils = Utils(index_directory)
+    indexer = PartialIndexer(file_path, utils)
     indexer.create_workers()
 
     merge_partial_indices(utils=utils) # pass in the index directory

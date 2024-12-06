@@ -37,10 +37,21 @@ class Utils:
     
     def update_link_graph(self, from_url, to_urls):
         '''
-        PageRank: Add outgoing links for a URL.
+        Improve PageRank link graph construction
         '''
-        with self.lock:  
-            self.link_graph[from_url].update(to_urls)
+        with self.lock:
+            # Filter out non-http(s) links and duplicates
+            clean_urls = set()
+            for url in to_urls:
+                # Remove fragment identifiers and internal links
+                if url.startswith(('http://', 'https://')) and url != from_url:
+                    clean_urls.add(url)
+            
+            # Only add if there are clean outgoing links
+            if clean_urls:
+                if from_url not in self.link_graph:
+                    self.link_graph[from_url] = set()
+                self.link_graph[from_url].update(clean_urls)
 
     def normalize_url(self, url, base_url):
         '''

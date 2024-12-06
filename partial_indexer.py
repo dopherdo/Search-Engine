@@ -8,8 +8,8 @@ from utils import Utils
 
 
 class PartialIndexer:
-    def __init__(self, file_directory, partial_index_directory):
-        self.utils = Utils(partial_index_directory)
+    def __init__(self, file_directory, utils):
+        self.utils = utils
         self.workers = []
         self.file_directory = file_directory
 

@@ -10,6 +10,7 @@ from collections import defaultdict
 def calculate_pagerank_sparse(link_graph, damping_factor=0.85, max_iterations=100, tol=1e-6):
     pages = list(link_graph.keys())
     N = len(pages)
+    print(N)
     page_to_index = {page: i for i, page in enumerate(pages)}
 
     # Create a sparse adjacency matrix
@@ -18,6 +19,8 @@ def calculate_pagerank_sparse(link_graph, damping_factor=0.85, max_iterations=10
     data = []
 
     for page, links in link_graph.items():
+        print(f"{page}: {links}")
+        print()
         if links:  # Only process pages with outbound links
             for link in links:
                 if link in page_to_index:  # Ensure the link exists in the graph
@@ -27,14 +30,25 @@ def calculate_pagerank_sparse(link_graph, damping_factor=0.85, max_iterations=10
 
     adjacency_matrix = csr_matrix((data, (row_indices, col_indices)), shape=(N, N))
 
+    print(adjacency_matrix)
+
+    # Identify dangling nodes (nodes with no outbound links)
+    dangling_nodes = [page_to_index[page] for page, links in link_graph.items() if not links]
+
     # Initialize PageRank scores
     pagerank = np.ones(N) / N
-    dangling_weights = np.ones(N) / N
 
     for _ in range(max_iterations):
-        new_pagerank = (1 - damping_factor) / N  # Random teleportation
-        new_pagerank += damping_factor * (adjacency_matrix @ pagerank)  # Rank propagation
-        new_pagerank += damping_factor * sum(pagerank[i] for i in range(N) if i in dangling_weights)
+        # Random teleportation
+        new_pagerank = (1 - damping_factor) / N
+
+        # Rank propagation via adjacency matrix
+        new_pagerank += damping_factor * (adjacency_matrix @ pagerank)
+
+        # Add contribution from dangling nodes
+        if dangling_nodes:
+            dangling_rank = damping_factor * sum(pagerank[node] for node in dangling_nodes) / N
+            new_pagerank += dangling_rank
 
         # Check for convergence
         if np.linalg.norm(new_pagerank - pagerank, ord=1) < tol:
@@ -47,11 +61,13 @@ def calculate_pagerank_sparse(link_graph, damping_factor=0.85, max_iterations=10
 
 
 
-def merge_partial_indices(output_file="final_inverted_index.json", url_map_file = "url_map.json", utils):
+
+def merge_partial_indices(utils, output_file="final_inverted_index.json", url_map_file = "url_map.json"):
     lowest_names = []     # json_name : word
     indexed_documents = set() # track unique document ids
     token_counter = 0 # count unique tokens 
-    
+
+    page_rank_dict = calculate_pagerank_sparse(utils.link_graph)
 
     with open(url_map_file, 'r', encoding='utf-8') as f:
         url_map = json.load(f)
@@ -112,31 +128,65 @@ def merge_partial_indices(output_file="final_inverted_index.json", url_map_file 
                 # total # of docs  -> len(utils.url_map)
                 # total num of docs with that specific word -> len(current_posting)
                 # term frequency of that specific doc -> current[posting]
+                # Calculate tf-idf and incorporate PageRank
                 for i, post in enumerate(current_posting):
                     tf = 1 + math.log(post["term_frequency"])
                     idf = math.log(url_count / len(current_posting))
                     tf_idf = tf * idf
-                    current_posting[i]["tf_idf"] = tf_idf
 
-                current_posting.sort(key=lambda x: x["tf_idf"], reverse=True)
+                    # Add PageRank to each posting
+                    doc_id = post["doc_id"]
+                    mapped_value = url_map.get(str(doc_id), "")
+                    if isinstance(mapped_value, list):
+                        # Use the first URL in the list if it exists
+                        mapped_value = mapped_value[0] if mapped_value else ""
+
+                    page_rank = page_rank_dict.get(mapped_value, 0)
+
+                    current_posting[i]["tf_idf"] = tf_idf
+                    current_posting[i]["page_rank"] = page_rank
+
+                # Sort postings by a combination of tf-idf and PageRank
+                current_posting.sort(key=lambda x: (x["tf_idf"], x["page_rank"]), reverse=True)
 
                 if current_term:
-                    # Dumps "token" : [{"url1" : "url", "freq1" : freq}         , {url2, freq2}, ...]
                     json.dump({current_term: current_posting}, out_file)
                     out_file.write('\n')
-            
-                
-                current_term = term 
-                current_posting = posting
-                token_counter += 1 #unique word found
 
-            for entries in posting:
-                indexed_documents.add(entries["doc_id"]) # add the doc id to the indexed_documents
-            
+                current_term = term
+                current_posting = posting
+                token_counter += 1  # Unique token count
+
+            # Add doc_id to the indexed documents
+            for entry in posting:
+                indexed_documents.add(entry["doc_id"])
+
             try:
-                next_term, next_postings = next(json_iterator) # json_iterator = json_iterator
+                next_term, next_postings = next(json_iterator)
                 heapq.heappush(lowest_names, (next_term, json_file, json_iterator, next_postings))
             except StopIteration:
                 print("WE FINISHED A FILE WOOOO")
-                pass  # File is fully 
+
+        # Handle the last term
+        if current_posting:
+            for i, post in enumerate(current_posting):
+                tf = 1 + math.log(post["term_frequency"])
+                idf = math.log(url_count / len(current_posting))
+                tf_idf = tf * idf
+
+                # Add PageRank for the last term
+                doc_id = post["doc_id"]
+                mapped_value = url_map.get(str(doc_id), "")
+                if isinstance(mapped_value, list):
+                    # Use the first URL in the list if it exists
+                    mapped_value = mapped_value[0] if mapped_value else ""
+
+                page_rank = page_rank_dict.get(mapped_value, 0)
+                
+                current_posting[i]["tf_idf"] = tf_idf
+                current_posting[i]["page_rank"] = page_rank
+
+            current_posting.sort(key=lambda x: (x["tf_idf"], x["page_rank"]), reverse=True)
+            json.dump({current_term: current_posting}, out_file)
+            out_file.write('\n')
                 
